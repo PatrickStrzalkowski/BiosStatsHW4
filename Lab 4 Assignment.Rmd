@@ -1,0 +1,169 @@
+---
+title: "Homework 4 - Titanic"
+author: "Patrick Strzalkowski"
+date: "25/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#1
+titanic.data<-read.csv("titanic.csv")
+```
+#2
+#Five variables that are predicted to impact survival
+#1) Price of the ticket (fare), people that could afford more expensive tickets are more likely to be important passengers of the titanic and so were given priority to board emergency boats
+#2) Gender, it was expected that men were to allow women and children to board the emergancy boats first
+#3) Number of parents/children on board (parch), women and children would have been given priority when boarding the emergency boats, making it more likely to survive if you were a parent or a child on board with a parent
+#4) Age (age), I predict that younger passengers would be more fit and have a higher chance of survival. As well, children may have been given priority to board escape boats
+#5) Class (pclass), higher class individuals would have been given priority for boarding emergency boats (similar reasoning to variable #1)
+
+```{r}
+#3
+#Discrete variables
+library(vcd)
+#Gender (0 = Male, 1 = Female)
+mosaic(survived~Gender, data=titanic.data)
+#Class of passenegrs
+mosaic(survived~pclass, data=titanic.data)
+#Number of Parents/Children
+mosaic(parch~survived, data=titanic.data)
+#Continuous variables
+library(popbio)
+#Number of parents/Children
+my.data.nona<-na.omit(data.frame("parch"=titanic.data$parch,"survived"=titanic.data$survived))
+logi.hist.plot(my.data.nona$parch,my.data.nona$survived,boxp=FALSE,type="hist",col="blue", xlabel="# of Parents/Children")
+#Price of ticket
+my.data.nona<-na.omit(data.frame("fare"=titanic.data$fare,"survived"=titanic.data$survived))
+logi.hist.plot(my.data.nona$fare,my.data.nona$survived,boxp=FALSE,type="hist",col="blue", xlabel="Fare Price")
+#Age of passengers
+my.data.nona<-na.omit(data.frame("age"=titanic.data$age,"survived"=titanic.data$survived))
+logi.hist.plot(my.data.nona$age,my.data.nona$survived,boxp=FALSE,type="hist",col="blue", xlabel="Age")
+
+#I wasn't sure which category "parch" fit into so I added both graphs. The variable isn't continuous because you cannot have half a parent or child, but the range of was from 0-9, making the mosaic plot very messy.
+```
+
+
+```{r}
+#4 automatic selection procedure
+library(bestglm)
+my.variables=data.frame("Gender"=titanic.data$Gender,"pclass"=titanic.data$pclass,"parch"=titanic.data$parch,"fare"=titanic.data$fare,"age"=titanic.data$age,"survived"=titanic.data$survived)
+my.variables.nona=na.omit(my.variables)  #get rid of observations with NA
+bestglm(my.variables.nona,IC="AIC",family=binomial) #response variable must be last column in dataframe
+#only significant interactions are displayed?
+```
+
+```{r}
+#5
+#Fit best model
+tmodel1<-glm(survived~Gender+pclass+age, data=my.variables.nona)
+summary.lm(tmodel1)
+```
+```{r}
+#6
+#Purposeful select signifcant interactions
+univariate.Gender=glm(survived~Gender, data=my.variables.nona, family=binomial(link="logit"))
+summary(univariate.Gender)
+
+univariate.pclass=glm(survived~pclass, data=my.variables.nona, family=binomial(link="logit"))
+summary(univariate.pclass)
+
+univariate.parch=glm(survived~parch, data=my.variables.nona, family=binomial(link="logit"))
+summary(univariate.parch)
+
+univariate.fare=glm(survived~fare, data=my.variables.nona, family=binomial(link="logit"))
+summary(univariate.fare)
+
+univariate.age=glm(survived~age, data=my.variables.nona, family=binomial(link="logit"))
+summary(univariate.age)
+```
+```{r}
+#Testing Models
+tmodel2<-glm(survived~Gender+pclass+parch+fare+age, data=my.variables.nona, family=binomial(link="logit"))
+summary(tmodel2)
+#AIC = 994.59
+```
+```{r}
+#Testing a simpler model (dropped age, as it was the least significant of the variables)
+tmodel3<-glm(survived~Gender+pclass+parch+fare, data=my.variables.nona, family=binomial(link="logit"))
+summary(tmodel3)
+#AIC = 1023.1
+```
+```{r}
+#Testing the model that was gained from automatic selection
+tmodel4<-glm(survived~Gender+pclass+age, data=my.variables.nona, family=binomial(link="logit"))
+summary(tmodel3)
+#AIC = 990.96
+```
+```{r}
+library(lmtest)
+lrtest(tmodel2,tmodel4)
+```
+#7 Yes and No, all variables were significant so they were included in model2. Model2 had an AIC value of 994.59. However, when the same variables from model1 (selected automatically) were used to construct a model (model4) the AIC was 990.96, lower than model2. Therefore, selecting the same vairables used in the automatic selection creates a better model than including all significant variables.
+
+```{r}
+#8, viewing effects for the best model
+library(effects)
+plot(allEffects(tmodel1)) # to see effects of most important variables
+plot(allEffects(tmodel2)) #to see all variable affects
+```
+
+# All effects are in the direction I suspected: younger passengers, passengers in a higher class and women had a higher rate of survival than their counterparts.
+# As well, I wanted to run tmodel2, the model that included all five variables, as it is easy to see that parch and fare have very weak affects.
+```{r}
+#9
+library(car)
+#note you are looking to make sure there is a linear relationship (fitted green line) and to examine plots to 
+#see if there are any differences in the variability of residuals as the value for each predictor variable increases.
+residualPlots(tmodel1)
+
+#check for studentized residuals with a Bonferonni p<0.05
+outlierTest(tmodel1)
+
+#Test for leverage. Look at hat values plot that indicate leverage
+#Note that id.n=3 means that it will pick out the three values furthest from the average
+influenceIndexPlot(tmodel1, id.n=3)
+
+#test for influential observations. If removal of an observation causes substantial change in the estimates of coefficient, it is called influential observation. Influence can be thought of as the product of 
+#leverage and outlier (e.g., it has high hat value and response value is unusual conditional on covariate pattern)
+influencePlot(tmodel1)
+
+#Examine relationship between predictors. Is there any multicollinearity?
+#The general rule of thumb is that VIFs exceeding 4 warrant further investigation, while VIFs exceeding 10 
+#are signs of serious multicollinearity requiring correction.
+#VIF=
+vif(tmodel1)
+```
+#10, The Pearson's residuals appear to conform to a straight line, which is good. However, there are outliers, confirmed with the bonferroni test p=(0.0052). As well, the model is being influenced by five observations. However, none of the five influential observationshave a VIF value greater than +/-4, which is good. 
+```{r}
+#11
+#Test ability of model to accurate predict survival
+#k-fold cross validation
+if (!require("e1071")) install.packages("e1071")
+library(caret)
+ctrl <- trainControl(method = "repeatedcv", number = 10, savePredictions = TRUE)
+my.variables.nona$survived=as.factor(my.variables.nona$survived)
+#train=
+train(survived~Gender+pclass+age,data=my.variables.nona, method="glm", family=binomial(link='logit'),
+                 trControl = ctrl, tuneLength = 5)
+```
+#12 The model I have created appears to be fairly accurate (78.7%), being able to predict survivorship just over three-quarters of the time correctly. 
+```{r}
+#12 Confusion Matrix
+predictions<-predict(tmodel1, newdata=my.variables.nona,type="response")
+confusionMatrix(data=as.factor(as.numeric(predictions>0.5)),reference=my.variables.nona$survived)
+#13
+train <- data.frame(LoanStatus_B = as.numeric(rnorm(100)>0.5), b= rnorm(100), c = rnorm(100), d = rnorm(100))
+logitMod <- glm(LoanStatus_B ~ ., data=train, family=binomial(link="logit"))
+pdata <- predict(logitMod, newdata = train, type = "response")
+
+# use caret and compute a confusion matrix
+confusionMatrix(data = as.factor(as.numeric(pdata>0.5)), reference = as.factor(train$LoanStatus_B))
+```
+#Accuracy of the confusion matrix is 78.2%, slightly different than the k-fold value of 78.6%.
+#14 The k-fold calculates the accuracy using only a fraction of the data, while the confusion matrix uses all of the data to determine an accuracy value. There will always be some variations when taking random observations. As well, everytime the k-fold cross-validation is performed it results in a slightly different accuracy value, another effect of randomization.
+
+
